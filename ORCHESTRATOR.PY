@@ -49,8 +49,8 @@ def _get_nombre_producto(invcod: str) -> str:
             if not os.path.exists(setart_path):
                 return ""
 
-            # ⚠️ SIN codepage forzado (ASCII seguro)
-            t = dbf.Table(setart_path)
+            # ⚠️ CON codepage forzado (Windows-1252)
+            t = dbf.Table(setart_path, codepage='cp1252')
             t.open(mode=dbf.READ_ONLY)
 
             fields = [f.upper() for f in t.field_names]
