@@ -53,7 +53,7 @@ def _get_nombre_producto(invcod: str) -> str:
             t = dbf.Table(setart_path)
             t.open(mode=dbf.READ_ONLY)
 
-            fields = [f.name.upper() for f in t.field_names]
+            fields = [f.upper() for f in t.field_names]
 
             campo_nombre = None
             for c in ["INVNOM", "NOMBRE", "DESCRIP", "DESCRI", "DESCRIPCIO", "ARTNOM"]:
