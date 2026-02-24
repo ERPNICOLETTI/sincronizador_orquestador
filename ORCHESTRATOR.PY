@@ -94,7 +94,15 @@ def _emitir_pdf_remito(tipo: str, remito: str, cliente: str, fecha: str, items: 
     os.makedirs(carpeta, exist_ok=True)
 
     safe_remito = (remito or "SIN_REMITO").replace("/", "-").replace("\\", "-").strip()
+    
     out_pdf = os.path.join(carpeta, f"{safe_remito}.pdf")
+    # --- PROTECCIÓN ANTI-SOBREESCRITURA ---
+    # Si FoxPro repite el número de remito (como pasó hoy con el IX0100000002)
+    # y el PDF ya existe, le agregamos la hora al nombre para no perderlo.
+    if os.path.exists(out_pdf):
+        from datetime import datetime
+        hora_str = datetime.now().strftime("%H%M%S")
+        out_pdf = os.path.join(carpeta, f"{safe_remito}_{hora_str}.pdf")
 
     c = canvas.Canvas(out_pdf, pagesize=A4)
     w, h = A4
@@ -140,6 +148,8 @@ def _emitir_pdf_remito(tipo: str, remito: str, cliente: str, fecha: str, items: 
         y -= 12
 
     c.save()
+    
+    print(f">>> PDF Generado: {out_pdf}")
 
 
 def detectar_tipos_pendientes():
