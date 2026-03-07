@@ -111,12 +111,12 @@ def sincronizar(modo_lote_ml=False):
 
     # 1. Validar Base SQL
     if not os.path.exists(DB_SQL_PATH): 
-        print(f"❌ ERROR CRÍTICO: No encuentro la base de datos en: {DB_SQL_PATH}")
+        print(f"ERROR CRITICO: No encuentro la base de datos en: {DB_SQL_PATH}")
         return
 
     # 2. Validar Semáforo (Lock)
     if os.path.exists(LOCK_FILE):
-        print("⏳ DBF Ocupado por otro proceso. Esperando turno...")
+        print("DBF Ocupado por otro proceso. Esperando turno...")
         return
 
     conn = sqlite3.connect(DB_SQL_PATH)
@@ -126,21 +126,21 @@ def sincronizar(modo_lote_ml=False):
         # 3. Buscar pendientes
         pendientes = obtener_pendientes(conn, incluir_ml=modo_lote_ml)
         if not pendientes:
-            print("✅ Nada nuevo para enviar.")
+            print("Nada nuevo para enviar.")
             return
 
-        print(f"🚀 Procesando {len(pendientes)} movimientos...")
+        print(f"Procesando {len(pendientes)} movimientos...")
         
         # 4. Poner CANDADO
         try:
             with open(LOCK_FILE, 'w') as f: f.write("LOCKED")
         except Exception as e:
-            print(f"❌ No se pudo crear el archivo lock: {e}")
+            print(f"No se pudo crear el archivo lock: {e}")
             return
 
         # 5. Abrir o Crear DBF
         if not os.path.exists(DBF_PATH):
-            print("✨ El archivo NOVEDADES.DBF no existe. Creándolo...")
+            print("El archivo NOVEDADES.DBF no existe. Creándolo...")
             table = dbf.Table(DBF_PATH, DEF_ESTRUCTURA, codepage='cp850')
             table.open(mode=dbf.READ_WRITE)
         else:
@@ -157,7 +157,8 @@ def sincronizar(modo_lote_ml=False):
         agrupados = {}
 
         for row in pendientes:
-            if "TRANSFERENCIA" in (row["origen"] or "").upper():
+            origen = (row["origen"] or "").upper()
+            if "TRANSFERENCIA" in origen or "REPOSICION" in origen:
                 key = (row["numero_orden"], row["sku"])
             else:
                 key = (row["numero_orden"], row["sku"], row["id"])
@@ -186,7 +187,7 @@ def sincronizar(modo_lote_ml=False):
                 destino = (data["destino"] or "DEPO_A_SALON").upper()
                 cliente = data["cliente"]
 
-                if "TRANSFERENCIA" in origen_upper:
+                if "TRANSFERENCIA" in origen_upper or "REPOSICION" in origen_upper:
                     cant_total = abs(float(rows[0]["cantidad"]))
                 else:
                     cant_total = sum(float(r["cantidad"]) for r in rows)
@@ -223,20 +224,21 @@ def sincronizar(modo_lote_ml=False):
                         else:
                             invpen -= float(r["cantidad"])
 
-                # --- TRANSFERENCIA ---
-                elif "TRANSFERENCIA" in origen_upper:
+                # --- TRANSFERENCIA O REPOSICION ---
+                elif "TRANSFERENCIA" in origen_upper or "REPOSICION" in origen_upper:
                     cod_cli = "INTERNO"
                     tipo_dbf = "TRANSFERENCIA"
 
                     # Cantidad única (no por filas)
                     cant = abs(float(rows[0]["cantidad"]))
 
-                    if "SALON_A_DEPO" in destino:
+                    if "TRANSFERENCIA" in origen_upper and "SALON_A_DEPO" in destino:
                         # Salón → Depósito
                         invact = -cant
                         invpen = +cant
                     else:
-                        # Depósito → Salón
+                        # Reposición o Depósito → Salón
+                        # Reposición siempre es DEPO a SALON
                         invact = +cant
                         invpen = -cant
 
@@ -280,7 +282,7 @@ def sincronizar(modo_lote_ml=False):
                     ids_procesados.append(r["id"])
 
             except Exception as e:
-                print(f"❌ Error agrupando {sku}: {e}")
+                print(f"Error agrupando {sku}: {e}")
 
         
         # 7. Confirmar en SQL (Marcar como exportados)
@@ -291,7 +293,7 @@ def sincronizar(modo_lote_ml=False):
             fecha_txt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.execute(sql, [fecha_txt, lote_id] + ids_procesados)
             conn.commit()
-            print(f"✅ Éxito: Lote {lote_id} enviado con {len(ids_procesados)} items.")
+            print(f"Exito: Lote {lote_id} enviado con {len(ids_procesados)} items.")
 
             # --- 8. AUTOMATIZACIÓN: LLAMAR AL ORQUESTADOR ---
             # Llamamos al orquestador que debe estar en la misma carpeta MOVSTK
@@ -303,12 +305,12 @@ def sincronizar(modo_lote_ml=False):
                     # check=True hace que si falla el orquestador, lance excepción aquí
                     subprocess.run([sys.executable, ruta_orquestador], check=True)
                 else:
-                    print(f"⚠️ Alerta: No encuentro el orquestador en {ruta_orquestador}")
+                    print(f"Alerta: No encuentro el orquestador en {ruta_orquestador}")
             except Exception as e:
-                print(f"⚠️ El sincronizador terminó bien, pero falló al llamar al Orquestador: {e}")
+                print(f"El sincronizador terminó bien, pero falló al llamar al Orquestador: {e}")
 
     except Exception as e:
-        print(f"❌ Error CRÍTICO durante la sincronización: {e}")
+        print(f"Error CRITICO durante la sincronizacion: {e}")
         
     finally:
         # 9. Limpieza final
