@@ -85,8 +85,8 @@ def obtener_pendientes(conn, incluir_ml=False):
     
     # Traemos todo lo que NO fue exportado (0 o NULL)
     sql = """
-        SELECT m.id, m.sku, m.cantidad, m.fecha, m.origen_stock,
-       o.cliente_nombre, o.origen, o.destino, o.numero_orden
+        SELECT m.id, m.sku, m.cantidad, m.fecha, m.origen_stock, m.subtipo,
+       o.cliente_nombre, o.origen, o.destino, o.numero_orden, o.tipo_orden
         FROM movimiento m
         LEFT JOIN orden o ON m.orden_id = o.id
         WHERE (m.exportado IS NULL OR m.exportado = 0)
@@ -198,14 +198,29 @@ def sincronizar(modo_lote_ml=False):
                 tipo_dbf = origen_upper[:15]
                 cod_cli = obtener_codigo_entidad(conn, cliente)
 
-                # --- FILTRO MANUAL / TN ---
-                if any(x in origen_upper for x in ["MANUAL", "TN"]):
+                # --- FILTRO MANUAL / TN (Excepto Cambios) ---
+                if any(x in origen_upper for x in ["MANUAL", "TN"]) and row["tipo_orden"] != "CAMBIO":
                     for r in rows:
                         ids_procesados.append(r["id"])
                     continue
 
+                # --- CAMBIOS ---
+                if rows[0]["tipo_orden"] == "CAMBIO":
+                    cod_cli = obtener_codigo_entidad(conn, cliente)
+                    
+                    if rows[0]["subtipo"] == "INGRESO_CAMBIO":
+                        # El cliente devuelve -> SUMA stock
+                        tipo_dbf = "INGRESO"
+                        invpen = float(abs(rows[0]["cantidad"])) if rows[0]["origen_stock"] == "DEPO" else 0
+                        invact = float(abs(rows[0]["cantidad"])) if rows[0]["origen_stock"] == "SALON" else 0
+                    else:
+                        # Reemplazo -> RESTA stock (EGRESO_CAMBIO)
+                        tipo_dbf = "EGRESO"
+                        invpen = -float(abs(rows[0]["cantidad"])) if rows[0]["origen_stock"] == "DEPO" else 0
+                        invact = -float(abs(rows[0]["cantidad"])) if rows[0]["origen_stock"] == "SALON" else 0
+
                 # --- FULL ---
-                if "FULL" in origen_upper:
+                elif "FULL" in origen_upper:
                     cod_cli = "FULL"
                     tipo_dbf = "EGRESO"
                     for r in rows:
