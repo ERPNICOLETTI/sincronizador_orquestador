@@ -114,30 +114,44 @@ def sincronizar(modo_lote_ml=False):
         print(f"ERROR CRITICO: No encuentro la base de datos en: {DB_SQL_PATH}")
         return
 
-    # 2. Validar Semáforo (Lock)
+    # 2. Validar Semáforo (Lock) con Espera Inteligente
+    intentos = 0
+    max_intentos = 15  # 15 reintentos * 2 seg = 30 segundos totales
+    while os.path.exists(LOCK_FILE) and intentos < max_intentos:
+        print(f"DBF Ocupado por otro proceso. Reintentando en 2 seg... ({intentos + 1}/{max_intentos})")
+        time.sleep(2)
+        intentos += 1
+
     if os.path.exists(LOCK_FILE):
-        print("DBF Ocupado por otro proceso. Esperando turno...")
+        print("ERROR: El DBF sigue ocupado después de esperar 30s. Abortando para evitar daños.")
+        return
+
+    # 3. Poner CANDADO (Ahora lo ponemos ANTES de cualquier operación)
+    try:
+        with open(LOCK_FILE, 'w') as f: f.write("LOCKED")
+    except Exception as e:
+        print(f"No se pudo crear el archivo lock: {e}")
         return
 
     conn = sqlite3.connect(DB_SQL_PATH)
     conn.row_factory = sqlite3.Row 
     
     try:
-        # 3. Buscar pendientes
+        # 4. Buscar pendientes en SQLite
         pendientes = obtener_pendientes(conn, incluir_ml=modo_lote_ml)
+        
         if not pendientes:
-            print("Nada nuevo para enviar.")
-            return
+            print("Nada nuevo en SQLite. Verificando si hay remanentes en el Orquestador...")
+            try:
+                ruta_orquestador = r"\\servidor\sistema\VENTAS\MOVSTK\ORCHESTRATOR.PY"
+                if os.path.exists(ruta_orquestador):
+                    subprocess.run([sys.executable, ruta_orquestador])
+            except:
+                pass
+            return # El lock se quita en el 'finally'
 
         print(f"Procesando {len(pendientes)} movimientos...")
         
-        # 4. Poner CANDADO
-        try:
-            with open(LOCK_FILE, 'w') as f: f.write("LOCKED")
-        except Exception as e:
-            print(f"No se pudo crear el archivo lock: {e}")
-            return
-
         # 5. Abrir o Crear DBF
         if not os.path.exists(DBF_PATH):
             print("El archivo NOVEDADES.DBF no existe. Creándolo...")
@@ -199,7 +213,7 @@ def sincronizar(modo_lote_ml=False):
                 cod_cli = obtener_codigo_entidad(conn, cliente)
 
                 # --- FILTRO MANUAL / TN (Excepto Cambios) ---
-                if any(x in origen_upper for x in ["MANUAL", "TN"]) and row["tipo_orden"] != "CAMBIO":
+                if any(x in origen_upper for x in ["MANUAL", "TN"]) and rows[0]["tipo_orden"] != "CAMBIO":
                     for r in rows:
                         ids_procesados.append(r["id"])
                     continue

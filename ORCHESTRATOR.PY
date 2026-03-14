@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 import sqlite3
+import time
 from datetime import datetime
 import dbf
 from reportlab.pdfgen import canvas
@@ -42,37 +43,42 @@ def _get_nombre_producto(invcod: str) -> str:
     global _SETART_CACHE
     try:
         if _SETART_CACHE is None:
-            # ACTUALIZADO: Ruta directa al servidor (IP Fija)
             setart_path = r"\\192.168.1.11\sistema\VENTAS\SETART.DBF"
             _SETART_CACHE = {}
 
             if not os.path.exists(setart_path):
                 return ""
 
-            # ⚠️ CON codepage forzado (Windows-1252)
-            t = dbf.Table(setart_path, codepage='cp1252')
-            t.open(mode=dbf.READ_ONLY)
+            intentos = 0
+            while intentos < 5:
+                try:
+                    t = dbf.Table(setart_path, codepage='cp1252')
+                    t.open(mode=dbf.READ_ONLY)
+                    try:
+                        fields = [f.upper() for f in t.field_names]
+                        campo_nombre = None
+                        for c in ["INVNOM", "NOMBRE", "DESCRIP", "DESCRI", "DESCRIPCIO", "ARTNOM"]:
+                            if c in fields:
+                                campo_nombre = c
+                                break
 
-            fields = [f.upper() for f in t.field_names]
+                        if not campo_nombre:
+                            return ""
 
-            campo_nombre = None
-            for c in ["INVNOM", "NOMBRE", "DESCRIP", "DESCRI", "DESCRIPCIO", "ARTNOM"]:
-                if c in fields:
-                    campo_nombre = c
-                    break
-
-            if not campo_nombre:
-                t.close()
-                return ""
-
-            for r in t:
-                cod_raw = str(r.INVCOD).strip().upper()
-                nom_raw = str(getattr(r, campo_nombre)).strip()
-
-                if cod_raw:
-                    _SETART_CACHE[cod_raw] = nom_raw
-
-            t.close()
+                        for r in t:
+                            cod_raw = str(r.INVCOD).strip().upper()
+                            nom_raw = str(getattr(r, campo_nombre)).strip()
+                            if cod_raw:
+                                _SETART_CACHE[cod_raw] = nom_raw
+                        break # Exito
+                    finally:
+                        t.close()
+                except Exception as e:
+                    intentos += 1
+                    time.sleep(2)
+                    if intentos >= 5:
+                        print("ERROR SETART (Reintentos agotados):", e)
+                        return ""
 
             print("SETART cache cargado:", len(_SETART_CACHE), "productos")
 
@@ -80,7 +86,7 @@ def _get_nombre_producto(invcod: str) -> str:
         return _SETART_CACHE.get(key, "")
 
     except Exception as e:
-        print("ERROR SETART:", e)
+        print("ERROR SETART GLOBAL:", e)
         return ""
 
 
@@ -282,17 +288,32 @@ def ejecutar_exe(path_exe, nombre):
         print(f"!!! ERROR: No existe el ejecutable: {path_exe}")
         return
 
-    r = subprocess.run(
-        [path_exe],
-        cwd=BASE_PATH,
-        capture_output=True,
-        text=True
-    )
+    max_intentos = 10
+    intentos = 0
+    espera_segundos = 5
 
-    if r.stdout:
-        print(r.stdout.strip())
-    if r.stderr:
-        print("STDERR:", r.stderr.strip())
+    while intentos < max_intentos:
+        r = subprocess.run(
+            [path_exe],
+            cwd=BASE_PATH,
+            capture_output=True,
+            text=True
+        )
+
+        output = (r.stdout or "") + (r.stderr or "")
+        if output:
+            print(output.strip())
+
+        # Detección de errores de bloqueo (FoxPro/Clipper)
+        error_bloqueo = any(x in output for x in ["No pude bloquear", "error de red", "file in use", "record in use"])
+        
+        if error_bloqueo:
+            intentos += 1
+            print(f"⚠️ Error de bloqueo detectado ({intentos}/{max_intentos}). Reintentando en {espera_segundos}s...")
+            time.sleep(espera_segundos)
+        else:
+            # Si no hay error de bloqueo (éxito o error fatal), salimos del bucle
+            break
 
     print(f">>> {nombre} finalizado.")
 
