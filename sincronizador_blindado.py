@@ -292,13 +292,11 @@ def sincronizar(modo_lote_ml=False):
 
 
 
-                orden_seq = obtener_siguiente_orden()
-
                 table.append((
                     sku[:20],
                     cod_cli[:20],
                     datetime.datetime.now().date(),
-                    orden_seq[:20],
+                    lote_id[:20],
                     "",
                     tipo_dbf[:15],
                     cant_total,

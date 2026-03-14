@@ -217,9 +217,10 @@ def procesar_resultados_y_limpiar():
                         invpen,
                         invact,
                         cliente,
-                        orden
+                        orden,
+                        lote_id
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     fecha_con_hora,
                     str(record.remito).strip(),
@@ -229,6 +230,7 @@ def procesar_resultados_y_limpiar():
                     float(record.invpen),
                     float(record.invact),
                     str(record.cliente).strip(),
+                    str(record.orden).strip(),
                     str(record.orden).strip()
                 ))
 
