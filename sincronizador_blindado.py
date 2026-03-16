@@ -4,7 +4,15 @@ import sqlite3
 import datetime
 import dbf
 import sys
-import subprocess  # <--- Agregado para poder llamar al Orquestador
+import subprocess
+import logging
+
+# Configurar log para no perder rastro de fallos
+logging.basicConfig(
+    filename='sincronizador.log',
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 
 # ==============================================================================
 # CONFIGURACIÓN (RUTAS FIJAS)
@@ -141,7 +149,9 @@ def sincronizar(modo_lote_ml=False):
         pendientes = obtener_pendientes(conn, incluir_ml=modo_lote_ml)
         
         if not pendientes:
-            print("Nada nuevo en SQLite. Verificando si hay remanentes en el Orquestador...")
+            msg = "Nada nuevo en SQLite. Ejecutando Orquestador para limpieza..."
+            print(msg)
+            logging.info(msg)
             try:
                 ruta_orquestador = r"\\servidor\sistema\VENTAS\MOVSTK\ORCHESTRATOR.PY"
                 if os.path.exists(ruta_orquestador):
@@ -150,7 +160,9 @@ def sincronizar(modo_lote_ml=False):
                 pass
             return # El lock se quita en el 'finally'
 
-        print(f"Procesando {len(pendientes)} movimientos...")
+        msg = f"Iniciando proceso: {len(pendientes)} movimientos detectados."
+        print(msg)
+        logging.info(msg)
         
         # 5. Abrir o Crear DBF
         if not os.path.exists(DBF_PATH):
@@ -168,6 +180,8 @@ def sincronizar(modo_lote_ml=False):
         # 6. AGRUPAR MOVIMIENTOS POR (ORDEN, SKU, ID_MOV)
         # ============================================================
 
+        ids_para_actualizar = []
+        fecha_txt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         agrupados = {}
 
         for row in pendientes:
@@ -292,11 +306,13 @@ def sincronizar(modo_lote_ml=False):
 
 
 
+                orden_seq = obtener_siguiente_orden()
+
                 table.append((
                     sku[:20],
                     cod_cli[:20],
                     datetime.datetime.now().date(),
-                    lote_id[:20],
+                    orden_seq[:20],
                     "",
                     tipo_dbf[:15],
                     cant_total,
@@ -306,38 +322,35 @@ def sincronizar(modo_lote_ml=False):
                 ))
 
                 for r in rows:
-                    ids_procesados.append(r["id"])
+                    ids_para_actualizar.append((fecha_txt, orden_seq, r["id"]))
 
             except Exception as e:
                 print(f"Error agrupando {sku}: {e}")
 
-        
-        # 7. Confirmar en SQL (Marcar como exportados)
-        if ids_procesados:
-            placeholders = ','.join('?' * len(ids_procesados))
-            sql = f"UPDATE movimiento SET exportado=1, fecha_impacto=?, lote_id=? WHERE id IN ({placeholders})"
-            # Convertimos fecha a string para que no se queje
-            fecha_txt = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            conn.execute(sql, [fecha_txt, lote_id] + ids_procesados)
+        # 7. Confirmar en SQL (Marcar como exportados con el ID numérico)
+        if ids_para_actualizar:
+            sql = "UPDATE movimiento SET exportado=1, fecha_impacto=?, lote_id=? WHERE id=?"
+            conn.executemany(sql, ids_para_actualizar)
             conn.commit()
-            print(f"Exito: Lote {lote_id} enviado con {len(ids_procesados)} items.")
-
-            # --- 8. AUTOMATIZACIÓN: LLAMAR AL ORQUESTADOR ---
-            # Llamamos al orquestador que debe estar en la misma carpeta MOVSTK
-            print(">>> Pasando la posta al ORQUESTADOR...")
-            try:
-                ruta_orquestador = r"\\servidor\sistema\VENTAS\MOVSTK\ORCHESTRATOR.PY"
-
-                if os.path.exists(ruta_orquestador):
-                    # check=True hace que si falla el orquestador, lance excepción aquí
-                    subprocess.run([sys.executable, ruta_orquestador], check=True)
-                else:
-                    print(f"Alerta: No encuentro el orquestador en {ruta_orquestador}")
-            except Exception as e:
-                print(f"El sincronizador terminó bien, pero falló al llamar al Orquestador: {e}")
+            print(f"Exito: {len(ids_para_actualizar)} movimientos marcados como exportados.")
+        
+        # --- 8. AUTOMATIZACIÓN: LLAMAR AL ORQUESTADOR (SIEMPRE, COMO LIMPIEZA) ---
+        print(">>> Pasando la posta al ORQUESTADOR para procesar y limpiar...")
+        try:
+            ruta_orquestador = r"\\servidor\sistema\VENTAS\MOVSTK\ORCHESTRATOR.PY"
+            if os.path.exists(ruta_orquestador):
+                subprocess.run([sys.executable, ruta_orquestador], check=True)
+            else:
+                print(f"Alerta: No encuentro el orquestador en {ruta_orquestador}")
+        except Exception as e:
+            print(f"Error al llamar al Orquestador: {e}")
+            with open("sync_error.log", "a") as f:
+                f.write(f"{datetime.datetime.now()}: Error Orquestador: {e}\n")
 
     except Exception as e:
-        print(f"Error CRITICO durante la sincronizacion: {e}")
+        error_msg = f"Error CRITICO durante la sincronizacion: {e}"
+        print(error_msg)
+        logging.error(error_msg)
         
     finally:
         # 9. Limpieza final
