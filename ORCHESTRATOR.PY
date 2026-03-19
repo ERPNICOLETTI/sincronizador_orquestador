@@ -349,7 +349,7 @@ def main():
     if any(t in tipos for t in ["EGRESO", "MELI", "ML", "FULL"]):
         ejecutar_exe(EXE_EGRESO, "EGRESOS")
 
-    if "INGRESO" in tipos:
+    if any("INGRESO" in t or t.startswith("ING_") for t in tipos):
         ejecutar_exe(EXE_INGRESO, "INGRESOS")
 
     if "TRANSFERENCIA" in tipos:

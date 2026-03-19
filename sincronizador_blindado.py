@@ -295,8 +295,8 @@ def sincronizar(modo_lote_ml=False):
                         else:
                             invpen -= float(r["cantidad"])
 
-                elif "INGRESO" in origen_upper:
-                    tipo_dbf = "INGRESO"
+                elif "INGRESO" in origen_upper or "ING_" in origen_upper:
+                    tipo_dbf = origen_upper[:15] # Mantenemos el tipo específico (ING_PROD, ING_REV, etc)
                     for r in rows:
                         if (r["origen_stock"] or "").upper() == "SALON":
                             invact += float(r["cantidad"])
