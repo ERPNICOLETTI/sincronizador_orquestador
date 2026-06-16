@@ -12,7 +12,7 @@ from reportlab.lib.pagesizes import A4
 # CONFIGURACIÓN
 # ============================================================
 
-BASE_PATH = r"\\servidor\sistema\VENTAS"
+BASE_PATH = r"Z:\VENTAS"
 MOV_PATH  = os.path.join(BASE_PATH, "MOVSTK")
 
 NOVEDADES_DBF = os.path.join(MOV_PATH, "NOVEDADES.DBF")
@@ -43,10 +43,12 @@ def _get_nombre_producto(invcod: str) -> str:
     global _SETART_CACHE
     try:
         if _SETART_CACHE is None:
-            setart_path = r"\\192.168.1.11\sistema\VENTAS\SETART.DBF"
+            # Usamos la BASE_PATH ya definida arriba para que sea consistente
+            setart_path = os.path.join(BASE_PATH, "SETART.DBF")
             _SETART_CACHE = {}
 
             if not os.path.exists(setart_path):
+                print(f"DEBUG: No se encontro SETART en {setart_path}")
                 return ""
 
             intentos = 0
@@ -96,7 +98,17 @@ def _emitir_pdf_remito(tipo: str, remito: str, cliente: str, fecha: str, items: 
     items: lista de dicts: {invcod, cant, delta_salon, delta_depo, nombre}
     """
     tipo = (tipo or "").strip().upper()
-    carpeta = PDF_DIRS.get(tipo, MOV_PATH)
+    
+    # --- MEJORA: Detección inteligente de carpeta ---
+    if "INGRESO" in tipo or tipo.startswith("ING_"):
+        carpeta = os.path.join(MOV_PATH, "INGRESOS")
+    elif any(x in tipo for x in ["EGRESO", "ML", "FULL", "MELI"]):
+        carpeta = os.path.join(MOV_PATH, "EGRESOS")
+    elif "TRANSFERENCIA" in tipo:
+        carpeta = os.path.join(MOV_PATH, "TRANSFERENCIAS")
+    else:
+        carpeta = MOV_PATH
+        
     os.makedirs(carpeta, exist_ok=True)
 
     safe_remito = (remito or "SIN_REMITO").replace("/", "-").replace("\\", "-").strip()

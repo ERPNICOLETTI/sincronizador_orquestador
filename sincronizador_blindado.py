@@ -19,10 +19,10 @@ logging.basicConfig(
 # ==============================================================================
 
 # 1. RUTA DE LA BASE DE DATOS (Tu ruta exacta del Escritorio)
-DB_SQL_PATH = r"C:\Users\Usuario\Desktop\ERP-PINO\Programa Stock\pickeo.db"
+DB_SQL_PATH = r"C:\Users\lacas\Desktop\ERP-PINO\Programa Stock\pickeo.db"
 
 # 2. RUTA DEL DBF (Donde lee Clipper)
-RUTA_DESTINO_DBF = r"\\servidor\sistema\VENTAS\MOVSTK"
+RUTA_DESTINO_DBF = r"Z:\VENTAS\MOVSTK"
 
 # 3. Validaciones y Archivos derivados
 if not os.path.exists(RUTA_DESTINO_DBF):
@@ -153,7 +153,7 @@ def sincronizar(modo_lote_ml=False):
             print(msg)
             logging.info(msg)
             try:
-                ruta_orquestador = r"\\servidor\sistema\VENTAS\MOVSTK\ORCHESTRATOR.PY"
+                ruta_orquestador = r"Z:\VENTAS\MOVSTK\ORCHESTRATOR.PY"
                 if os.path.exists(ruta_orquestador):
                     subprocess.run([sys.executable, ruta_orquestador])
             except:
